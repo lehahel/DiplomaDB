@@ -1,5 +1,7 @@
 #include "graph.h"
-#include "clickhouse/query.h"
+
+#include "sql.h"
+#include "utils.h"
 
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
@@ -13,67 +15,52 @@
 #include <fmt/format.h>
 #include <memory>
 #include <optional>
-#include <random>
 #include <stdexcept>
 #include <iostream>
+#include <type_traits>
 
 namespace NGraph {
 
-void TErrorInfo::Fill(std::string_view sourceSession, std::string_view text) {
-    Text = fmt::format("{}: {}", sourceSession, text);
-}
-
 namespace {
-    constexpr auto createEdgesTableQuery = "CREATE TABLE IF NOT EXISTS default.{} (id UUID, from UUID, to UUID) ENGINE = {}";
-    constexpr auto selectAdjacentEdgesQuery = "SELECT to FROM {} WHERE from = UUIDNumToString(toFixedString('{}', 16))";
+    constexpr std::string_view createEdgesTableQuery = "CREATE TABLE IF NOT EXISTS default.{} (id UUID, from UUID, to UUID) ENGINE = {}";
+    constexpr std::string_view selectAdjacentEdgesQuery = "SELECT to FROM default.{} WHERE from = {}";
+    constexpr std::string_view dropTableQuery = "DROP TABLE {}";
+    constexpr std::string_view selectVerticesQuery = "SELECT DISTINCT from AS vertex_id FROM default.{0} UNION DISTINCT SELECT DISTINCT to AS vertex_id FROM default.{0}";
 
     inline std::string MakeTableName(std::string_view prefix, std::string_view name) {
         return fmt::format("{}_{}", prefix, name);
     }
-
-    std::uint64_t CreateRandomInt64() {
-        std::mt19937_64 engine(std::random_device{}());
-        std::uniform_int_distribution<uint64_t> distribution;
-        return distribution(engine);
-    }
-
-    NClickHouse::UUID CreateUUID() {
-        NClickHouse::UUID result;
-        result.first = CreateRandomInt64();
-        result.second = CreateRandomInt64();
-        return result;
-    }
 }
 
-bool IDatabaseGraph::AddEdge(const TEdge& edge, TErrorInfo* errorInfo /* = nullptr */) {
+bool IDatabaseGraph::AddEdge(const TEdge& edge, NSQL::TErrorInfo* errorInfo /* = nullptr */) {
     return AddEdgesBatch({ edge }, errorInfo);
 }
 
-bool TAdjacencyListGraph::InitializeOrGet(const std::string& name, TErrorInfo* errorInfo /* = nullptr */) {
-    static constexpr auto sourceSession = "TAdjacencyListGraph::InitializeOrGet";
-    static constexpr auto engine = "Memory";
+bool TAdjacencyListGraph::InitializeOrGet(const std::string& name, NSQL::TErrorInfo* errorInfo /* = nullptr */) {
+    static constexpr std::string_view sourceSession = "TAdjacencyListGraph::InitializeOrGet";
+    static constexpr std::string_view engine = "Memory";
     SetTableName(MakeTableName(GetTypeName(), name));
-
     auto sqlQuery = fmt::format(createEdgesTableQuery, GetTableName(), engine);
-    try {
-        ClickHouseClient.Execute(sqlQuery);
-    } catch (const std::exception& ex) {
-        if (errorInfo) {
-            errorInfo->Fill(sourceSession, ex.what());
-        }
-        return false;
-    }
-    return true;
+    return NSQL::ExecuteQuery(ClickHouseClient, sqlQuery, errorInfo, sourceSession);
 }
 
-bool TAdjacencyListGraph::AddEdgesBatch(const std::vector<TEdge>& edges, TErrorInfo* errorInfo) {
+bool TAdjacencyListGraph::Drop(NSQL::TErrorInfo* errorInfo /* = nullptr */) {
+    static constexpr std::string_view sourceSession = "TAdjacencyListGraph::Drop";
+    auto sqlQuery = fmt::format(dropTableQuery, GetTableName());
+    return NSQL::ExecuteQuery(ClickHouseClient, sqlQuery, errorInfo, sourceSession);
+}
+
+bool TAdjacencyListGraph::AddEdgesBatch(const std::vector<TEdge>& edges, NSQL::TErrorInfo* errorInfo) {
+    if (edges.empty()) {
+        return true;
+    }
     static constexpr auto sourceSession = "TAdjacencyListGraph::AddEdgesBatch";
     auto idColumn = std::make_shared<NClickHouse::ColumnUUID>();
     auto fromColumn = std::make_shared<NClickHouse::ColumnUUID>();
     auto toColumn = std::make_shared<NClickHouse::ColumnUUID>();
     for (auto&& edge : edges) {
         std::cout << "New edge from " << edge.GetFrom().first << " " << edge.GetFrom().second << " to " << edge.GetTo().first << " " << edge.GetTo().second << std::endl;
-        idColumn->Append(CreateUUID());
+        idColumn->Append(NUtils::CreateUUID());
         fromColumn->Append(edge.GetFrom());
         toColumn->Append(edge.GetTo());
     }
@@ -81,42 +68,19 @@ bool TAdjacencyListGraph::AddEdgesBatch(const std::vector<TEdge>& edges, TErrorI
     block.AppendColumn("id", idColumn);
     block.AppendColumn("from", fromColumn);
     block.AppendColumn("to", toColumn);
-    try {
-        ClickHouseClient.Insert(GetTableName(), block);
-    } catch (const std::exception& ex) {
-        if (errorInfo) {
-            errorInfo->Fill(sourceSession, ex.what());
-        }
-        return false;
-    }
-    return true;
+    return NSQL::Insert(ClickHouseClient, GetTableName(), block, errorInfo, sourceSession);
 }
 
-std::optional<std::vector<TRowId>> TAdjacencyListGraph::GetAdjacent(const TRowId& vertexId, TErrorInfo* errorInfo /* = nullptr */) {
+std::optional<std::vector<TRowId>> TAdjacencyListGraph::GetRowIds(NSQL::TErrorInfo* errorInfo /* = nullptr */) {
+    static constexpr auto sourceSession = "TAdjacencyListGraph::GetRowIds";
+    auto sqlQuery = fmt::format(selectVerticesQuery, GetTableName());
+    return NSQL::SelectColumn<NClickHouse::ColumnUUID>(ClickHouseClient, sqlQuery, errorInfo, sourceSession);
+}
+
+std::optional<std::vector<TRowId>> TAdjacencyListGraph::GetAdjacent(const TRowId& vertexId, NSQL::TErrorInfo* errorInfo /* = nullptr */) {
     static constexpr auto sourceSession = "TAdjacencyListGraph::GetAdjacent";
-    auto result = std::make_optional<std::vector<TRowId>>();
-    NClickHouse::QuerySettings query;
-    const char* vertexIdBytes = reinterpret_cast<const char*>(&vertexId);
-    std::string_view vertexIdCasted(vertexIdBytes, sizeof(vertexId));
-    auto sqlQuery = fmt::format(selectAdjacentEdgesQuery, GetTableName(), vertexIdCasted);
-    try {
-        ClickHouseClient.Select(sqlQuery, [&result] (const NClickHouse::Block& block) -> void {
-            if (block.GetColumnCount() != 1ul) {
-                auto text = fmt::format("Invalid column number got (expected 1, got {}).", block.GetColumnCount());
-                throw std::runtime_error(text);
-            }
-            auto column = block[0]->As<NClickHouse::ColumnUUID>();
-            for (std::size_t i = 0; i < column->Size(); ++i) {
-                result->push_back(column->At(i));
-            }
-        });
-    } catch (const std::exception& ex) {
-        if (errorInfo) {
-            errorInfo->Fill(sourceSession, ex.what());
-        }
-        return std::nullopt;
-    }
-    return result;
+    auto sqlQuery = fmt::format(selectAdjacentEdgesQuery, GetTableName(), NUtils::GetRepresentation(vertexId));
+    return NSQL::SelectColumn<NClickHouse::ColumnUUID>(ClickHouseClient, sqlQuery, errorInfo, sourceSession);
 }
 
 }

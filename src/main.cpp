@@ -12,7 +12,7 @@ namespace GraphCH {
 
 int main()
 {
-    NGraph::TErrorInfo errorInfo;
+    NSQL::TErrorInfo errorInfo;
     NClickHouse::ClientOptions opts;
     opts.SetHost("localhost");
     opts.SetPort(9000);
@@ -42,22 +42,22 @@ int main()
     edge1.SetTo(vertexId2);
 
     NGraph::TEdge edge2;
-    edge1.SetFrom(vertexId1);
-    edge1.SetTo(vertexId3);
+    edge2.SetFrom(vertexId1);
+    edge2.SetTo(vertexId3);
 
     NGraph::TEdge edge3;
-    edge1.SetFrom(vertexId1);
-    edge1.SetTo(vertexId4);
+    edge3.SetFrom(vertexId1);
+    edge3.SetTo(vertexId4);
 
     NGraph::TEdge edge4;
-    edge1.SetFrom(vertexId3);
-    edge1.SetTo(vertexId4);
+    edge4.SetFrom(vertexId3);
+    edge4.SetTo(vertexId4);
 
     NGraph::TEdge edge5;
-    edge1.SetFrom(vertexId2);
-    edge1.SetTo(vertexId1);
+    edge5.SetFrom(vertexId2);
+    edge5.SetTo(vertexId1);
 
-    std::vector edges{edge1, edge2, edge3, edge4, edge5};
+    std::vector<NGraph::TEdge> edges{edge1, edge2, edge3, edge4, edge5};
     if (!graph->AddEdgesBatch(edges, &errorInfo)) {
         throw std::runtime_error(errorInfo.Text);
     }
@@ -68,6 +68,16 @@ int main()
     }
 
     for (auto&& item : *adj) {
+        std::cout << item.first << " " << item.second << std::endl;
+    }
+
+    std::cout << "Vertices: " << std::endl;
+    auto vert = graph->GetRowIds(&errorInfo);
+    if (!vert) {
+        throw std::runtime_error(errorInfo.Text);
+    }
+
+    for (auto&& item : *vert) {
         std::cout << item.first << " " << item.second << std::endl;
     }
 

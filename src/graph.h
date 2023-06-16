@@ -1,19 +1,16 @@
 #pragma once
 
+#include <clickhouse/base/uuid.h>
 #include <clickhouse/client.h>
-#include <memory>
 
-#include "clickhouse/base/uuid.h"
 #include "macro.h"
+#include "sql.h"
+
+#include <memory>
 
 namespace NClickHouse = clickhouse;
 
 namespace NGraph {
-
-struct TErrorInfo {
-    std::string Text;
-    void Fill(std::string_view sourceSession, std::string_view text);
-};
 
 using TRowId = NClickHouse::UUID;
 
@@ -27,17 +24,22 @@ public:
     IDatabaseGraph(const NClickHouse::ClientOptions& opts)
         : ClickHouseClient(opts) {}
 
-    virtual bool InitializeOrGet(const std::string& name, TErrorInfo* errorInfo = nullptr) = 0;
+    virtual bool InitializeOrGet(const std::string& name, NSQL::TErrorInfo* errorInfo = nullptr) = 0;
 
-    virtual bool AddEdgesBatch(const std::vector<TEdge>& edges, TErrorInfo* errorInfo = nullptr) = 0;
+    virtual bool AddEdgesBatch(const std::vector<TEdge>& edges, NSQL::TErrorInfo* errorInfo = nullptr) = 0;
 
-    virtual bool AddEdge(const TEdge& edge, TErrorInfo* errorInfo = nullptr);
-    virtual std::optional<std::vector<TRowId>> GetAdjacent(const TRowId& vertexId, TErrorInfo* errorInfo = nullptr) = 0;
+    virtual bool AddEdge(const TEdge& edge, NSQL::TErrorInfo* errorInfo = nullptr);
+    virtual std::optional<std::vector<TRowId>> GetAdjacent(const TRowId& vertexId, NSQL::TErrorInfo* errorInfo = nullptr) = 0;
+    virtual std::optional<std::vector<TRowId>> GetRowIds(NSQL::TErrorInfo* errorInfo = nullptr) = 0;
 
     virtual std::string GetTypeName() = 0;
 
+    virtual bool Drop(NSQL::TErrorInfo* errorInfo = nullptr) = 0;
+
     virtual ~IDatabaseGraph() {
     };
+
+    const NClickHouse::Client& GetClickhouseClient() const;
 
 private:
     FIELD(std::string, TableName);
@@ -57,10 +59,13 @@ public:
         return std::make_unique<TAdjacencyListGraph>(opts);
     }
 
-    bool InitializeOrGet(const std::string& name, TErrorInfo* errorInfo = nullptr) override;
+    bool InitializeOrGet(const std::string& name, NSQL::TErrorInfo* errorInfo = nullptr) override;
 
-    bool AddEdgesBatch(const std::vector<TEdge>& edges, TErrorInfo* errorInfo = nullptr) override;
-    std::optional<std::vector<TRowId>> GetAdjacent(const TRowId& vertexId, TErrorInfo* errorInfo = nullptr) override;
+    bool AddEdgesBatch(const std::vector<TEdge>& edges, NSQL::TErrorInfo* errorInfo = nullptr) override;
+    std::optional<std::vector<TRowId>> GetAdjacent(const TRowId& vertexId, NSQL::TErrorInfo* errorInfo = nullptr) override;
+    std::optional<std::vector<TRowId>> GetRowIds(NSQL::TErrorInfo* errorInfo = nullptr) override;
+
+    bool Drop(NSQL::TErrorInfo* errorInfo = nullptr) override;
 
     std::string GetTypeName() override {
         return "adjacency_list_graph";
