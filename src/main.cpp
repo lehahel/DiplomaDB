@@ -1,14 +1,15 @@
 #include <iostream>
 #include <clickhouse/client.h>
 #include <stdexcept>
+#include <unordered_map>
 
+#include "algo.h"
+#include "clickhouse/base/uuid.h"
+#include "generators.h"
 #include "graph.h"
+#include "utils.h"
 
 using namespace clickhouse;
-
-namespace GraphCH {
-
-} // namespace GraphCH
 
 int main()
 {
@@ -21,102 +22,80 @@ int main()
         throw std::runtime_error(errorInfo.Text);
     }
 
-    NGraph::TRowId vertexId1;
-    vertexId1.first = 1;
-    vertexId1.second = 1;
+    std::size_t treeDepth{0};
+    std::cin >> treeDepth;
 
-    NGraph::TRowId vertexId2;
-    vertexId2.first = 2;
-    vertexId2.second = 2;
-
-    NGraph::TRowId vertexId3;
-    vertexId3.first = 3;
-    vertexId3.second = 3;
-
-    NGraph::TRowId vertexId4;
-    vertexId4.first = 4;
-    vertexId4.second = 4;
-
-    NGraph::TEdge edge1;
-    edge1.SetFrom(vertexId1);
-    edge1.SetTo(vertexId2);
-
-    NGraph::TEdge edge2;
-    edge2.SetFrom(vertexId1);
-    edge2.SetTo(vertexId3);
-
-    NGraph::TEdge edge3;
-    edge3.SetFrom(vertexId1);
-    edge3.SetTo(vertexId4);
-
-    NGraph::TEdge edge4;
-    edge4.SetFrom(vertexId3);
-    edge4.SetTo(vertexId4);
-
-    NGraph::TEdge edge5;
-    edge5.SetFrom(vertexId2);
-    edge5.SetTo(vertexId1);
-
-    std::vector<NGraph::TEdge> edges{edge1, edge2, edge3, edge4, edge5};
-    if (!graph->AddEdgesBatch(edges, &errorInfo)) {
+    std::vector<NGraph::TRowId> vertexIds;
+    if (!NGenerators::MakeTree(*graph, treeDepth, vertexIds, &errorInfo)) {
         throw std::runtime_error(errorInfo.Text);
     }
 
-    auto adj = graph->GetAdjacent(vertexId1, &errorInfo);
-    if (!adj) {
+    {
+        std::cout << "IsPathExistsVectored started" << std::endl;
+        NUtils::TTimer timer;
+        timer.Set();
+        if (!NAlgo::IsPathExistsVectored(*graph, vertexIds.front(), vertexIds.back(), &errorInfo)) {
+            throw std::runtime_error(errorInfo.Text);
+        }
+        std::cout << "IsPathExistsVectored time: " << timer.GetElapsedTime().count() << " ms" << std::endl;
+    }
+
+    if (!graph->Drop(&errorInfo)) {
         throw std::runtime_error(errorInfo.Text);
     }
 
-    for (auto&& item : *adj) {
-        std::cout << item.first << " " << item.second << std::endl;
-    }
+    // std::size_t graphSize;
+    // double probability;
+    // std::cin >> graphSize >> probability;
 
-    std::cout << "Vertices: " << std::endl;
-    auto vert = graph->GetRowIds(&errorInfo);
-    if (!vert) {
-        throw std::runtime_error(errorInfo.Text);
-    }
+    // auto vertexIds = NUtils::CreateUUIDs(graphSize);
 
-    for (auto&& item : *vert) {
-        std::cout << item.first << " " << item.second << std::endl;
-    }
-
-    // /// Initialize client connection.
-    // Client client(ClientOptions().SetHost("localhost").SetPort(9000));
-
-    // /// Create a table.
-    // client.Execute("CREATE TABLE IF NOT EXISTS default.numbers (id UInt64, name String) ENGINE = Memory");
-
-    // /// Insert some values.
-    // {
-    //     Block block;
-
-    //     auto id = std::make_shared<ColumnUInt64>();
-    //     id->Append(1);
-    //     id->Append(7);
-
-    //     auto name = std::make_shared<ColumnString>();
-    //     name->Append("one");
-    //     name->Append("seven");
-
-    //     block.AppendColumn("id"  , id);
-    //     block.AppendColumn("name", name);
-
-    //     client.Insert("default.numbers", block);
+    // if (!NGenerators::MakeRandomGraph(*graph, vertexIds, probability, &errorInfo)) {
+    //     throw std::runtime_error(errorInfo.Text);
     // }
 
-    // /// Select values inserted in the previous step.
-    // client.Select("SELECT id, name FROM default.numbers", [] (const Block& block)
-    //     {
-    //         for (size_t i = 0; i < block.GetRowCount(); ++i) {
-    //             std::cout << block[0]->As<ColumnUInt64>()->At(i) << " "
-    //                       << block[1]->As<ColumnString>()->At(i) << "\n";
-    //         }
+    // {
+    //     std::cout << "DFS started" << std::endl;
+    //     NUtils::TTimer timer;
+    //     timer.Set();
+    //     if (!NAlgo::DepthFirstSearch(*graph, vertexIds.front(), &errorInfo)) {
+    //         throw std::runtime_error(errorInfo.Text);
     //     }
-    // );
+    //     std::cout << "DFS time: " << timer.GetElapsedTime().count() << " ms" << std::endl;
+    // }
 
-    // /// Delete table.
-    // client.Execute("DROP TABLE default.numbers");
+    // {
+    //     std::cout << "FindPath started" << std::endl;
+    //     NUtils::TTimer timer;
+    //     timer.Set();
+    //     if (!NAlgo::FindPath(*graph, vertexIds.front(), vertexIds.back(), &errorInfo)) {
+    //         throw std::runtime_error(errorInfo.Text);
+    //     }
+    //     std::cout << "FindPath time: " << timer.GetElapsedTime().count() << " ms" << std::endl;
+    // }
+
+    // auto vertexIds = NUtils::CreateUUIDs(10);
+    // std::map<NClickHouse::UUID, std::size_t> uuidToNum;
+    // for (std::size_t i = 0; i < vertexIds.size(); ++i) {
+    //     uuidToNum[vertexIds[i]] = i;
+    // }
+    // if (!NGenerators::MakeRandomGraph(*graph, vertexIds, 0.1, &errorInfo)) {
+    //     throw std::runtime_error(errorInfo.Text);
+    // }
+
+    // for (auto&& item : vertexIds) {
+    //     auto adj = graph->GetAdjacent(item, &errorInfo);
+    //     if (!adj) {
+    //         throw std::runtime_error(errorInfo.Text);
+    //     }
+    //     auto num = uuidToNum[item];
+    //     std::cout << num << ": (";
+    //     for (auto&& v : *adj) {
+    //         auto vnum = uuidToNum[v];
+    //         std::cout << vnum << " ";
+    //     }
+    //     std::cout << ")" << std::endl;
+    // }
 
     return 0;
 }

@@ -1,8 +1,10 @@
 #pragma once
 
-#include "clickhouse/block.h"
+#include <clickhouse/block.h>
 #include <clickhouse/client.h>
+
 #include <optional>
+#include <iostream>
 
 namespace NSQL {
 
@@ -48,6 +50,7 @@ template <class Column>
 std::optional<std::vector<typename SelectResult<Column>::DataType>> SelectColumn(clickhouse::Client& client, const std::string& query, TErrorInfo* errorInfo = nullptr, std::string_view sourceSession = "NSQL::Select") {
     auto result = SelectResult<Column>();
     auto callback = MakeDeserializeColumnCallback(result);
+    // std::cout << "Query: " << query << std::endl;
     try {
         client.Select(query, callback);
     } catch (const std::exception& ex) {

@@ -24,17 +24,46 @@ public:
     IDatabaseGraph(const NClickHouse::ClientOptions& opts)
         : ClickHouseClient(opts) {}
 
-    virtual bool InitializeOrGet(const std::string& name, NSQL::TErrorInfo* errorInfo = nullptr) = 0;
+    virtual bool InitializeOrGet(
+        const std::string& name,
+        NSQL::TErrorInfo* errorInfo = nullptr
+    ) = 0;
 
-    virtual bool AddEdgesBatch(const std::vector<TEdge>& edges, NSQL::TErrorInfo* errorInfo = nullptr) = 0;
+    virtual bool AddEdgesBatch(
+        const std::vector<TEdge>& edges,
+        NSQL::TErrorInfo* errorInfo = nullptr
+    ) = 0;
 
-    virtual bool AddEdge(const TEdge& edge, NSQL::TErrorInfo* errorInfo = nullptr);
-    virtual std::optional<std::vector<TRowId>> GetAdjacent(const TRowId& vertexId, NSQL::TErrorInfo* errorInfo = nullptr) = 0;
-    virtual std::optional<std::vector<TRowId>> GetRowIds(NSQL::TErrorInfo* errorInfo = nullptr) = 0;
+    virtual bool CreateVertices(
+        const std::size_t size,
+        std::string_view tableName,
+        NSQL::TErrorInfo* errorInfo = nullptr
+    );
+
+    virtual bool AddEdge(
+        const TEdge& edge,
+        NSQL::TErrorInfo* errorInfo = nullptr
+    );
+
+    virtual std::optional<std::vector<TRowId>> GetAdjacent(
+        const TRowId& vertexId,
+        NSQL::TErrorInfo* errorInfo = nullptr
+    ) = 0;
+
+    virtual std::optional<std::vector<TRowId>> GetRowIds(
+        NSQL::TErrorInfo* errorInfo = nullptr
+    ) = 0;
+
+    virtual std::optional<std::vector<TRowId>> GetToByCustomCondition(
+        std::string_view query,
+        NSQL::TErrorInfo* errorInfo = nullptr
+    ) = 0;
 
     virtual std::string GetTypeName() = 0;
 
-    virtual bool Drop(NSQL::TErrorInfo* errorInfo = nullptr) = 0;
+    virtual bool Drop(
+        NSQL::TErrorInfo* errorInfo = nullptr
+    ) = 0;
 
     virtual ~IDatabaseGraph() {
     };
@@ -42,7 +71,8 @@ public:
     const NClickHouse::Client& GetClickhouseClient() const;
 
 private:
-    FIELD(std::string, TableName);
+    FIELD(std::string, EdgesTableName);
+    FIELD(std::string, VerticesTableName);
 
 protected:
     NClickHouse::Client ClickHouseClient;
@@ -65,18 +95,13 @@ public:
     std::optional<std::vector<TRowId>> GetAdjacent(const TRowId& vertexId, NSQL::TErrorInfo* errorInfo = nullptr) override;
     std::optional<std::vector<TRowId>> GetRowIds(NSQL::TErrorInfo* errorInfo = nullptr) override;
 
+    std::optional<std::vector<TRowId>> GetToByCustomCondition(std::string_view query, NSQL::TErrorInfo* errorInfo = nullptr) override;
+
     bool Drop(NSQL::TErrorInfo* errorInfo = nullptr) override;
 
     std::string GetTypeName() override {
         return "adjacency_list_graph";
     }
 };
-
-namespace NAlgo {
-
-bool DepthFirstSearch(const IDatabaseGraph& graph, const TRowId& startVertex);
-bool BreadthFirstSearch(const IDatabaseGraph& graph, const TRowId& endVertex);
-
-}
 
 }

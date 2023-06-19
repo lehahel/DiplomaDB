@@ -2,6 +2,8 @@
 
 #include <fmt/format.h>
 
+#include <iostream>
+
 namespace NSQL {
 
 void TErrorInfo::Fill(std::string_view sourceSession, std::string_view text) {
@@ -9,6 +11,7 @@ void TErrorInfo::Fill(std::string_view sourceSession, std::string_view text) {
 }
 
 bool ExecuteQuery(clickhouse::Client& client, const std::string& query, TErrorInfo* errorInfo /* = nullptr */, std::string_view sourceSession /* = "ExecuteQuery" */) {
+    // std::cout << "Query: " << query << std::endl;
     try {
         client.Execute(query);
     } catch (const std::exception& e) {

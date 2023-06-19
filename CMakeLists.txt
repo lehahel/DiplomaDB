@@ -7,7 +7,7 @@ add_subdirectory(contrib/clickhouse-cpp)
 add_subdirectory(contrib/fmt)
 
 find_package(Boost 1.68 REQUIRED)
-add_executable(${PROJECT_NAME} "src/main.cpp" "src/graph.cpp" "src/sql.cpp" "src/utils.cpp" "src/generators.cpp")
+add_executable(${PROJECT_NAME} "src/main.cpp" "src/graph.cpp" "src/sql.cpp" "src/utils.cpp" "src/generators.cpp" "src/algo.cpp")
 
 target_include_directories(${PROJECT_NAME} PRIVATE contrib/clickhouse-cpp/ contrib/clickhouse-cpp/contrib/absl)
 target_include_directories(${PROJECT_NAME} PRIVATE contrib/fmt)
